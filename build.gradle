@@ -27,7 +27,7 @@ dependencies {
 }
 
 test { systemProperty 'ibx.test.classpath', sourceSets.test.runtimeClasspath.asPath }
-tasks.withType(Jar).configureEach { from('THIRD_PARTY.md') { into 'META-INF' } }
+tasks.withType(Jar).configureEach { from(files('THIRD_PARTY.md', 'LICENSE')) { into 'META-INF' } }
 publishing {
   publications { mavenJava(MavenPublication) { from components.java } }
   repositories {

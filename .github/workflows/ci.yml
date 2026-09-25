@@ -26,5 +26,6 @@ jobs:
           MAVEN_REPO_USER: ${{ secrets.INTERLIS_MAVEN_USERNAME }}
           MAVEN_REPO_PASSWORD: ${{ secrets.INTERLIS_MAVEN_TOKEN }}
         run: |
-          test -n "$MAVEN_REPO_USER" && test -n "$MAVEN_REPO_PASSWORD"
+          test -n "$MAVEN_REPO_USER"
+          test -n "$MAVEN_REPO_PASSWORD"
           ./gradlew publish --no-daemon

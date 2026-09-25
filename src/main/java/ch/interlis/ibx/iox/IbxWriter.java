@@ -43,6 +43,11 @@ public final class IbxWriter implements IoxWriter, AutoCloseable {
         if (started) throw new IoxException("Duplicate transfer start");
         started = true;
         StartTransferEvent start = (StartTransferEvent) event;
+        if (start instanceof ch.interlis.iox_j.StartTransferEvent) {
+          String declared = ((ch.interlis.iox_j.StartTransferEvent)start).getVersion();
+          if (declared != null && !"2.3".equals(declared) && !"2.4".equals(declared))
+            throw new IoxException("Only INTERLIS 2.3/2.4 FULL transfers are supported");
+        }
         if (bridge == null) {
           TransferMetadata meta = new TransferMetadata();
           meta.sender = start.getSender(); meta.comment = start.getComment();

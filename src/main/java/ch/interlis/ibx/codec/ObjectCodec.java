@@ -55,6 +55,8 @@ public final class ObjectCodec {
     ArrayNode attrs = a.addArray();
     for (int i = 0; i < o.getattrcount(); i++) {
       String key = o.getattrname(i);
+      // IOX internal database identity is not an INTERLIS transfer attribute.
+      if (ch.interlis.iom_j.Iom_jObject.INTERNAL_T_ID.equals(key)) continue;
       ArrayNode field = attrs.addArray();
       field.add(id(key));
       ArrayNode values = field.addArray();

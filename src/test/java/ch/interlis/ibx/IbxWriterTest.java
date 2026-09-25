@@ -29,12 +29,16 @@ public class IbxWriterTest {
       try (IbxWriter w = new IbxWriter(target,b.model,o)) {
         w.setModels(new String[]{"Tiny"});
         IoxEvent e;
-        while ((e=r.read())!=null) { w.write(e); if(e instanceof EndTransferEvent) break; }
+        while ((e=r.read())!=null) {
+          if(e instanceof ObjectEvent) ((ObjectEvent)e).getIomObject().setattrvalue(ch.interlis.iom_j.Iom_jObject.INTERNAL_T_ID,"123");
+          w.write(e); if(e instanceof EndTransferEvent) break;
+        }
         w.flush();
       } finally { r.close(); }
       try (IbxContainer c=IbxContainer.open(target); Fragment f=c.getTopic("Tiny.Data")) {
         assertEquals(3, f.baskets().count()); assertEquals(3, f.objects().count());
         assertEquals("test sender",c.metadata().sender);
+        assertTrue(f.objects().allMatch(o2 -> o2.getObject().getattrvalue(ch.interlis.iom_j.Iom_jObject.INTERNAL_T_ID)==null));
       }
     }
   }
