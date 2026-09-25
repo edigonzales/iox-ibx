@@ -1,0 +1,30 @@
+name: Build and publish snapshot
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: iox-ibx-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew build --no-daemon
+      - name: Publish tested snapshot
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          MAVEN_REPO_USER: ${{ secrets.INTERLIS_MAVEN_USERNAME }}
+          MAVEN_REPO_PASSWORD: ${{ secrets.INTERLIS_MAVEN_TOKEN }}
+        run: |
+          test -n "$MAVEN_REPO_USER" && test -n "$MAVEN_REPO_PASSWORD"
+          ./gradlew publish --no-daemon

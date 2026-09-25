@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ili:transfer xmlns:ili="http://www.interlis.ch/xtf/2.4/INTERLIS" xmlns:geom="http://www.interlis.ch/geometry/1.0" xmlns:Tiny="http://www.interlis.ch/xtf/2.4/Tiny">
+<ili:headersection><ili:models><ili:model>Tiny</ili:model></ili:models><ili:sender>test sender</ili:sender><ili:comment>original comment</ili:comment></ili:headersection>
+<ili:datasection>
+<Tiny:Data ili:bid="empty"></Tiny:Data>
+<Tiny:Data ili:bid="b1">
+<Tiny:Item ili:tid="o1"><Tiny:name>Grüezi</Tiny:name><Tiny:amount>1.23450</Tiny:amount><Tiny:point><geom:coord><geom:c1>0.000</geom:c1><geom:c2>0.000</geom:c2></geom:coord></Tiny:point><Tiny:details><Tiny:Details><Tiny:label>first</Tiny:label></Tiny:Details><Tiny:Details><Tiny:label>second</Tiny:label></Tiny:Details></Tiny:details></Tiny:Item>
+<Tiny:Item ili:tid="o2"><Tiny:name>other</Tiny:name><Tiny:amount>-3.00000</Tiny:amount><Tiny:point><geom:coord><geom:c1>100.000</geom:c1><geom:c2>100.000</geom:c2></geom:coord></Tiny:point><Tiny:line><geom:polyline><geom:coord><geom:c1>-1.000</geom:c1><geom:c2>0.000</geom:c2></geom:coord><geom:arc><geom:a1>0.000</geom:a1><geom:a2>1.000</geom:a2><geom:c1>1.000</geom:c1><geom:c2>0.000</geom:c2></geom:arc></geom:polyline></Tiny:line></Tiny:Item>
+</Tiny:Data>
+<Tiny:Data ili:bid="b2"><Tiny:Item ili:tid="o3"><Tiny:name>no geometry</Tiny:name></Tiny:Item></Tiny:Data>
+</ili:datasection></ili:transfer>

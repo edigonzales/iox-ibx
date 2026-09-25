@@ -1,0 +1,23 @@
+INTERLIS 2.4;
+MODEL Tiny (en) AT "https://example.org" VERSION "2026-09-15" =
+  DOMAIN
+    Coord = COORD -10000000.000 .. 10000000.000, -10000000.000 .. 10000000.000;
+  TOPIC Data =
+    STRUCTURE Details =
+      label : TEXT*100;
+    END Details;
+    CLASS Item =
+      name : TEXT*100;
+      amount : -10000.00000 .. 10000.00000;
+      point : Coord;
+      line : POLYLINE WITH (STRAIGHTS, ARCS) VERTEX Coord;
+      details : LIST {0..*} OF Details;
+      xml : BLACKBOX XML;
+      binary : BLACKBOX BINARY;
+    END Item;
+    ASSOCIATION Link =
+      a -- {0..*} Item;
+      b -- {0..*} Item;
+    END Link;
+  END Data;
+END Tiny.
