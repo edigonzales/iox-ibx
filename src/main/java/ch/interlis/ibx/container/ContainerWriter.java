@@ -1,4 +1,5 @@
 package ch.interlis.ibx.container;
+
 import ch.interlis.ibx.api.*;
 import ch.interlis.ibx.codec.*;
 import ch.interlis.ibx.index.*;
@@ -12,10 +13,13 @@ import java.util.*;
 
 public final class ContainerWriter {
   private ContainerWriter() {}
+
   public static void create(Path input, Path target, WriterOptions options) throws Exception {
     options.validate();
-    Path modelTemp = options.temporaryDirectory == null ? Files.createTempDirectory("ibx-models-")
-        : Files.createTempDirectory(options.temporaryDirectory, "ibx-models-");
+    Path modelTemp =
+        options.temporaryDirectory == null
+            ? Files.createTempDirectory("ibx-models-")
+            : Files.createTempDirectory(options.temporaryDirectory, "ibx-models-");
     try {
       ModelBridge bridge = ModelBridge.load(input, options, modelTemp);
       IoxReader reader = Xtf24Reader.createReader(input.toFile());
@@ -25,14 +29,21 @@ public final class ContainerWriter {
         IoxEvent event;
         while ((event = reader.read()) != null) {
           writer.write(event);
-          if (event instanceof EndTransferEvent) { ended = true; break; }
+          if (event instanceof EndTransferEvent) {
+            ended = true;
+            break;
+          }
         }
         if (!ended) throw new IOException("Incomplete transfer");
       } catch (IoxException e) {
-        if (e.getCause() instanceof IOException) throw (IOException)e.getCause();
+        if (e.getCause() instanceof IOException) throw (IOException) e.getCause();
         throw e;
-      } finally { reader.close(); }
-    } finally { FilesEx.deleteTree(modelTemp); }
+      } finally {
+        reader.close();
+      }
+    } finally {
+      FilesEx.deleteTree(modelTemp);
+    }
   }
 
   /** Internal bounded spool shared by the file adapter and IOX writer. */
@@ -47,19 +58,28 @@ public final class ContainerWriter {
     private boolean inside, ended, closed;
     private String bid;
     private BasketContext currentBasket;
+
     public Session(Path target, ModelBridge bridge, WriterOptions options) throws Exception {
       options.validate();
-      this.target = target.toAbsolutePath(); this.bridge = bridge; this.options = options;
-      if (Files.exists(this.target) && !options.overwrite) throw new FileAlreadyExistsException(target.toString());
-      for (Map.Entry<String,String> order : options.spatialOrder.entrySet())
-        if (!bridge.metadata.geometryCrs.containsKey(order.getKey()+"."+order.getValue()))
+      this.target = target.toAbsolutePath();
+      this.bridge = bridge;
+      this.options = options;
+      if (Files.exists(this.target) && !options.overwrite)
+        throw new FileAlreadyExistsException(target.toString());
+      for (Map.Entry<String, String> order : options.spatialOrder.entrySet())
+        if (!bridge.metadata.geometryCrs.containsKey(order.getKey() + "." + order.getValue()))
           throw new IOException("Unknown direct geometry attribute for spatial ordering: " + order);
       Files.createDirectories(this.target.getParent());
-      temp = options.temporaryDirectory == null
-          ? Files.createTempDirectory(this.target.getParent(), ".ibx-work-")
-          : Files.createTempDirectory(options.temporaryDirectory, "ibx-work-");
-      try { output = Files.createTempFile(this.target.getParent(), ".ibx-output-", ".tmp"); }
-      catch (IOException e) { FilesEx.deleteTree(temp); throw e; }
+      temp =
+          options.temporaryDirectory == null
+              ? Files.createTempDirectory(this.target.getParent(), ".ibx-work-")
+              : Files.createTempDirectory(options.temporaryDirectory, "ibx-work-");
+      try {
+        output = Files.createTempFile(this.target.getParent(), ".ibx-output-", ".tmp");
+      } catch (IOException e) {
+        FilesEx.deleteTree(temp);
+        throw e;
+      }
       usage = new TemporaryUsage(temp, output);
       options.objectDirectoryEntryBytes = 0;
       bridge.metadata.spatialOrder.putAll(options.spatialOrder);
@@ -67,63 +87,65 @@ public final class ContainerWriter {
       codec = new ObjectCodec(bridge.metadata, false);
       objects = new ExternalSort(temp, options.sortMemoryBytes);
     }
+
     public void accept(IoxEvent e) throws Exception {
       if (ended || closed) throw new IOException("Transfer is finished or closed");
-        if (e instanceof StartBasketEvent) {
-          if (inside) throw new IOException("Nested baskets");
-          StartBasketEvent start = (StartBasketEvent) e;
-          if (!bridge.metadata.topics.contains(start.getType())) throw new IOException("Unknown topic: " + start.getType());
-          if (start.getKind() != IomConstants.IOM_FULL
-              || start.getStartstate() != null
-              || start.getEndstate() != null)
-            throw new IOException("Only FULL transfers are supported; INITIAL/UPDATE rejected");
-          if (start.getBid() == null || start.getBid().isEmpty())
-            throw new IOException("Missing BID");
-          BasketContext context = new BasketContext(start, ++basket);
-          bid = context.bid;
-          currentBasket = context;
-          objects.add(FilesEx.number(basket) + "\0!basket", Cbor.bytes(context));
-          inside = true;
-        } else if (e instanceof ObjectEvent) {
-          if (!inside) throw new IOException("Object outside basket");
-          IomObject obj = ((ObjectEvent) e).getIomObject();
-          if (!bridge.metadata.classes.containsKey(obj.getobjecttag())) throw new IOException("Unknown class: " + obj.getobjecttag());
-          if (obj.getobjectoperation() != IomConstants.IOM_OP_INSERT)
-            throw new IOException("Non-FULL object operation");
-          // OID-less association instances remain in class/basket scans; no invented INTERLIS
-          // identity.
-          if (obj.getobjectoid() == null) {
-            ch.interlis.ili2c.metamodel.Element def = bridge.model.getElement(obj.getobjecttag());
-            if (!(def instanceof ch.interlis.ili2c.metamodel.AssociationDef))
-              throw new IOException("Missing TID: " + obj.getobjecttag());
-          }
-          try {
-            if ("wkb".equals(bridge.metadata.geometryEncoding))
-              bridge.resolveGeometryCrs(obj, currentBasket);
-            objects.add(
-                FilesEx.number(basket)
-                    + "\0"
-                    + obj.getobjecttag()
-                    + "\0"
-                    + FilesEx.number(ordinal++),
-                codec.encode(obj));
-          } catch (IOException ex) {
-            throw new IOException(
-                "BID=" + bid + " TID=" + obj.getobjectoid() + ": " + ex.getMessage(), ex);
-          }
-        } else if (e instanceof EndBasketEvent) {
-          if (!inside) throw new IOException("Unexpected basket end");
-          inside = false;
-        } else if (e instanceof EndTransferEvent) {
-          if (inside) throw new IOException("Unclosed basket");
-          finish();
-          ended = true;
-        } else { throw new IOException("Unexpected IOX event: " + e); }
+      if (e instanceof StartBasketEvent) {
+        if (inside) throw new IOException("Nested baskets");
+        StartBasketEvent start = (StartBasketEvent) e;
+        if (!bridge.metadata.topics.contains(start.getType()))
+          throw new IOException("Unknown topic: " + start.getType());
+        if (start.getKind() != IomConstants.IOM_FULL
+            || start.getStartstate() != null
+            || start.getEndstate() != null)
+          throw new IOException("Only FULL transfers are supported; INITIAL/UPDATE rejected");
+        if (start.getBid() == null || start.getBid().isEmpty())
+          throw new IOException("Missing BID");
+        BasketContext context = new BasketContext(start, ++basket);
+        bid = context.bid;
+        currentBasket = context;
+        objects.add(FilesEx.number(basket) + "\0!basket", Cbor.bytes(context));
+        inside = true;
+      } else if (e instanceof ObjectEvent) {
+        if (!inside) throw new IOException("Object outside basket");
+        IomObject obj = ((ObjectEvent) e).getIomObject();
+        if (!bridge.metadata.classes.containsKey(obj.getobjecttag()))
+          throw new IOException("Unknown class: " + obj.getobjecttag());
+        if (obj.getobjectoperation() != IomConstants.IOM_OP_INSERT)
+          throw new IOException("Non-FULL object operation");
+        // OID-less association instances remain in class/basket scans; no invented INTERLIS
+        // identity.
+        if (obj.getobjectoid() == null) {
+          ch.interlis.ili2c.metamodel.Element def = bridge.model.getElement(obj.getobjecttag());
+          if (!(def instanceof ch.interlis.ili2c.metamodel.AssociationDef))
+            throw new IOException("Missing TID: " + obj.getobjecttag());
+        }
+        try {
+          if ("wkb".equals(bridge.metadata.geometryEncoding))
+            bridge.resolveGeometryCrs(obj, currentBasket);
+          objects.add(
+              FilesEx.number(basket) + "\0" + obj.getobjecttag() + "\0" + FilesEx.number(ordinal++),
+              codec.encode(obj));
+        } catch (IOException ex) {
+          throw new IOException(
+              "BID=" + bid + " TID=" + obj.getobjectoid() + ": " + ex.getMessage(), ex);
+        }
+      } else if (e instanceof EndBasketEvent) {
+        if (!inside) throw new IOException("Unexpected basket end");
+        inside = false;
+      } else if (e instanceof EndTransferEvent) {
+        if (inside) throw new IOException("Unclosed basket");
+        finish();
+        ended = true;
+      } else {
+        throw new IOException("Unexpected IOX event: " + e);
+      }
     }
+
     private void finish() throws Exception {
       try (ExternalSort index = new ExternalSort(temp, options.sortMemoryBytes, true);
-           ch.interlis.ibx.navigation.NavigationBuilder navigation =
-               new ch.interlis.ibx.navigation.NavigationBuilder(temp, options, bridge.metadata)) {
+          ch.interlis.ibx.navigation.NavigationBuilder navigation =
+              new ch.interlis.ibx.navigation.NavigationBuilder(temp, options, bridge.metadata)) {
         options.geometryVerificationNanos = bridge.metadata.geometryVerificationNanos;
         try (RandomAccessFile out = new RandomAccessFile(output.toFile(), "rw");
             CloseableIterator<ExternalSort.Entry> records =
@@ -207,16 +229,25 @@ public final class ContainerWriter {
       }
       FilesEx.publish(output, target, options.overwrite);
     }
-    @Override public void close() throws IOException {
+
+    @Override
+    public void close() throws IOException {
       if (closed) return;
       closed = true;
       usage.close();
       options.temporaryPeakSampledBytes = usage.peak();
-      try { objects.close(); } finally {
-        try { Files.deleteIfExists(output); } finally { FilesEx.deleteTree(temp); }
+      try {
+        objects.close();
+      } finally {
+        try {
+          Files.deleteIfExists(output);
+        } finally {
+          FilesEx.deleteTree(temp);
+        }
       }
     }
   }
+
   private static void writeChunk(
       RandomAccessFile out,
       ExternalSort index,

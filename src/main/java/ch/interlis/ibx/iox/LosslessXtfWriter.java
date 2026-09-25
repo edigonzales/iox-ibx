@@ -10,7 +10,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 /**
- * Adapter for iox-ili 1.24.4's escaped XML-blackbox output. All XTF structure stays with iox-ili.
+ * Adapter for iox-ili 1.24.4's escaped XTF 2.4 XML-blackbox output.
+ * XTF 2.3 handles raw XML natively. All XTF structure stays with iox-ili.
  */
 public final class LosslessXtfWriter extends XtfWriterBase {
   private final EventBuffer buffer;
@@ -30,7 +31,7 @@ public final class LosslessXtfWriter extends XtfWriterBase {
 
   @Override
   public void write(IoxEvent event) throws IoxException {
-    if (event instanceof ObjectEvent)
+    if ("2.4".equals(metadata.version) && event instanceof ObjectEvent)
       event = new ch.interlis.iox_j.ObjectEvent(replace(((ObjectEvent) event).getIomObject()));
     super.write(event);
     flush();

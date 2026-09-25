@@ -63,7 +63,10 @@ public final class ModelBridge {
     Configuration config;
     if (!options.modelFiles.isEmpty())
       config = manager.getConfigWithFiles(new ArrayList<String>(options.modelFiles));
-    else config = manager.getConfig(new ArrayList<String>(meta.transferModels), Double.parseDouble(meta.version));
+    else
+      config =
+          manager.getConfig(
+              new ArrayList<String>(meta.transferModels), Double.parseDouble(meta.version));
     TransferDescription td = ch.interlis.ili2c.Main.runCompiler(config);
     if (td == null)
       throw new IOException(
@@ -71,8 +74,13 @@ public final class ModelBridge {
     return fromModel(td, options, meta, temp, paths);
   }
 
-  public static ModelBridge fromModel(TransferDescription td, WriterOptions options,
-      TransferMetadata meta, Path temp, List<String> paths) throws Exception {
+  public static ModelBridge fromModel(
+      TransferDescription td,
+      WriterOptions options,
+      TransferMetadata meta,
+      Path temp,
+      List<String> paths)
+      throws Exception {
     if (!"2.3".equals(meta.version) && !"2.4".equals(meta.version))
       throw new IOException("Only INTERLIS 2.3/2.4 FULL transfers are supported");
     meta.numericEncoding = options.numericEncoding;
@@ -366,10 +374,11 @@ public final class ModelBridge {
     List<XtfModel> models = new ArrayList<XtfModel>();
     for (String name : meta.transferModels) {
       String version = "", issuer = "";
-      for (TransferMetadata.ModelInfo m : meta.models) if (name.equals(m.name)) {
-        version = m.version == null ? "" : m.version;
-        issuer = m.issuer == null ? "" : m.issuer;
-      }
+      for (TransferMetadata.ModelInfo m : meta.models)
+        if (name.equals(m.name)) {
+          version = m.version == null ? "" : m.version;
+          issuer = m.issuer == null ? "" : m.issuer;
+        }
       models.add(new XtfModel(name, version, issuer));
     }
     writer.setModels(models.toArray(new XtfModel[0]));
