@@ -22,3 +22,5 @@ benachbarten Float64-Werten unverändert. Z bleibt ausschliesslich in der Geomet
 Leere Indizes besitzen ein Blatt mit null Einträgen. STR-Streifenanzahl und
 Seitenkapazität werden aus diesen festen Eintragsgrössen berechnet.
 
+
+Bei HTTP-Abfragen dürfen passende räumliche Geschwisterseiten über den bestehenden Frame-Cache gebündelt werden: maximal 64 KiB Zwischenraum und 1 MiB pro Range, nur wenn die betroffenen Seiten zusammen ins Cachebudget passen. Zwischenraumbytes werden separat gemessen. Lokale Zugriffe bleiben direkt. Dies kompensiert zusätzliche Blattgrenzen durch den veränderten Fanout; es gibt keine zusätzliche Verweistabelle.

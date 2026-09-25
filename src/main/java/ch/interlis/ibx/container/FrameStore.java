@@ -96,6 +96,13 @@ public final class FrameStore {
     if (!group.isEmpty()) fetch(group, start, end);
   }
 
+  /** Prefetch nearby HTTP sibling pages when every page fits together in cache. */
+  public synchronized void prefetchSpatial(List<FrameRef> refs) throws IOException {
+    long total = 0;
+    for (FrameRef ref : refs) total += ref.length;
+    if (refs.size() > 1 && total <= budget && total <= 1024 * 1024) prefetch(refs, 0, 1024 * 1024);
+  }
+
   private void fetch(List<FrameRef> group, long start, long end) throws IOException {
     byte[] bytes = source.read(start, (int) (end - start));
     long useful = 0;

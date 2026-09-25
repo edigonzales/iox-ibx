@@ -390,6 +390,14 @@ public final class SpatialIndex {
             f.type == Frames.SPATIAL_BRANCH ? SpatialPageCodec.BRANCH : leafLayout,
             offset,
             c.size() - Frames.FOOTER_SIZE);
+    // The new fanout changes leaf boundaries. Fetch adjacent matching sibling pages
+    // together over HTTP, using the existing bounded cache and range coalescing.
+    if (f.type == Frames.SPATIAL_BRANCH) {
+      List<FrameRef> matches = new ArrayList<FrameRef>();
+      for (Entry e : n.entries)
+        if (e.box.intersects(box)) matches.add(new FrameRef(e.child, e.childLength));
+      c.frameStore().prefetchSpatial(matches);
+    }
     for (Entry e : n.entries) {
       if (e.box == null) throw new IOException("Missing spatial bounds");
       try {
