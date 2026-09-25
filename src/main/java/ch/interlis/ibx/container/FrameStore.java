@@ -100,7 +100,10 @@ public final class FrameStore {
   public synchronized void prefetchSpatial(List<FrameRef> refs) throws IOException {
     long total = 0;
     for (FrameRef ref : refs) total += ref.length;
-    if (refs.size() > 1 && total <= budget && total <= 1024 * 1024) prefetch(refs, 0, 1024 * 1024);
+    if (source instanceof ch.interlis.ibx.remote.HttpRangeSource
+        && refs.size() > 1
+        && total <= budget
+        && total <= 1024 * 1024) prefetch(refs, 64 * 1024, 1024 * 1024);
   }
 
   private void fetch(List<FrameRef> group, long start, long end) throws IOException {
