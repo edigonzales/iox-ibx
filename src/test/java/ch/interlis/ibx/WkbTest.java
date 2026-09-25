@@ -109,7 +109,7 @@ public class WkbTest {
     SpatialIndex.add(output, "Tiny.Data.Item", "point", null);
     try (IbxContainer c = IbxContainer.open(output);
         GisLayer layer = c.openLayer("Tiny.Data.Item.point")) {
-      assertEquals(4, c.metadata().formatVersion());
+      assertEquals(5, c.metadata().formatVersion());
       assertEquals(2, c.layers().size());
       List<GisFeature> features;
       try (Stream<GisFeature> s = layer.features()) {

@@ -7,7 +7,7 @@ import java.util.zip.CRC32;
 
 public final class Frames {
   public static final long MAGIC = 0x494258434f4e5431L, FOOTER_MAGIC = 0x494258464f4f5431L;
-  public static final int VERSION = 4, HEADER_SIZE = 16, FRAME_HEADER = 16, FOOTER_SIZE = 64;
+  public static final int VERSION = 5, HEADER_SIZE = 16, FRAME_HEADER = 16, FOOTER_SIZE = 64;
   public static final int METADATA = 1,
       BASKET = 2,
       CHUNK = 3,
@@ -43,6 +43,9 @@ public final class Frames {
           "Containerformat "
               + version
               + " wird nicht mehr unterstützt; aus dem ursprünglichen XTF neu erstellen.");
+    if (magic == MAGIC && version != VERSION)
+      throw new IOException(
+          "Unsupported IBX format " + version + "; expected " + VERSION + "; recreate from source");
     if (magic != MAGIC || version != VERSION || features != 0)
       throw new IOException("Unsupported IBX header/version/features");
     return version;

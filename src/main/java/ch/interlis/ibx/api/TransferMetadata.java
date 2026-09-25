@@ -26,7 +26,7 @@ public final class TransferMetadata {
   }
 
   public int formatVersion() {
-    return 4;
+    return 5;
   }
 
   public void validateFormat(int version) throws java.io.IOException {

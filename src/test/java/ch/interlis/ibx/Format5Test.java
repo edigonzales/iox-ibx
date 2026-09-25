@@ -15,12 +15,12 @@ import java.util.stream.*;
 import org.junit.*;
 import org.junit.rules.TemporaryFolder;
 
-public class Format4Test {
+public class Format5Test {
   @Rule public TemporaryFolder temp = new TemporaryFolder();
 
   @Test
   public void independentBinaryFixtureAndWriterAgree() throws Exception {
-    byte[] fixture = Files.readAllBytes(Paths.get("src/test/resources/format4/binary-index.ibx"));
+    byte[] fixture = Files.readAllBytes(Paths.get("src/test/resources/format5/binary-index.ibx"));
     Path output = temp.getRoot().toPath().resolve("fixture.ibx");
     try (ch.interlis.ibx.index.ExternalSort sort =
             new ch.interlis.ibx.index.ExternalSort(temp.getRoot().toPath(), 16384, true);
@@ -28,10 +28,8 @@ public class Format4Test {
       Frames.header(out);
       sort.add("F\0" + 0, new byte[] {1});
       sort.add("F\0" + 1, new byte[] {2});
-      try (CloseableIterator<ch.interlis.ibx.index.ExternalSort.Entry> entries =
-          sort.finish()) {
-        long root =
-            ch.interlis.ibx.index.BTree.build(out, entries, temp.getRoot().toPath());
+      try (CloseableIterator<ch.interlis.ibx.index.ExternalSort.Entry> entries = sort.finish()) {
+        long root = ch.interlis.ibx.index.BTree.build(out, entries, temp.getRoot().toPath());
         Frames.footer(out, root, 0);
       }
     }
@@ -50,7 +48,8 @@ public class Format4Test {
   @Test
   public void legacyHeadersAreExplicitlyRejected() throws Exception {
     for (int version = 1; version <= 3; version++) {
-      ByteBuffer bytes = ByteBuffer.allocate(16).putLong(0x494c49434f4e5431L).putInt(version).putInt(0);
+      ByteBuffer bytes =
+          ByteBuffer.allocate(16).putLong(0x494c49434f4e5431L).putInt(version).putInt(0);
       try {
         Frames.checkHeader(new DataInputStream(new ByteArrayInputStream(bytes.array())));
         fail();
@@ -167,8 +166,7 @@ public class Format4Test {
     try (RangeServer server = new RangeServer(path)) {
       ReadMetrics metrics = new ReadMetrics();
       try (ch.interlis.ibx.remote.HttpRangeSource source =
-          new ch.interlis.ibx.remote.HttpRangeSource(
-              server.uri(), new RemoteOptions(), metrics)) {
+          new ch.interlis.ibx.remote.HttpRangeSource(server.uri(), new RemoteOptions(), metrics)) {
         FrameStore store = new FrameStore(source, metrics, 64);
         try {
           store.prefetch(Arrays.asList(first, second), 4096, 1024);

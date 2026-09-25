@@ -27,3 +27,5 @@ replay_pid*
 build/
 .DS_Store
 !gradle/wrapper/gradle-wrapper.jar
+
+!src/test/resources/format5/*.ibx

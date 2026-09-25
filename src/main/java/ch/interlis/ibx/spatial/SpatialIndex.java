@@ -18,6 +18,7 @@ public final class SpatialIndex {
     public String className, attribute, crs, axes = "C1,C2";
     public long root, rootLength, count;
     public String packing = "str";
+    public int leafLayout;
   }
 
   public static final class Entry {
@@ -66,6 +67,12 @@ public final class SpatialIndex {
             && !known.isEmpty()
             && !normalize(known).equals(normalize(explicitCrs)))
           throw new IOException("Explicit CRS conflicts with model CRS");
+        TransferMetadata.GeometryDescriptor descriptor =
+            c.metadata().geometries.get(cls + "." + attr);
+        int leafLayout =
+            descriptor != null && "CoordType".equals(descriptor.type)
+                ? SpatialPageCodec.POINT
+                : SpatialPageCodec.RECTANGLE;
         long count = 0;
         String domainSignature = null;
         try (Fragment fragment = c.getClass(cls);
@@ -95,7 +102,16 @@ public final class SpatialIndex {
                 else box = GeometryBounds.attribute(objects.next(), attr);
                 if (box != null) {
                   Entry e = new Entry();
+                  if (leafLayout == SpatialPageCodec.POINT) {
+                    double x = Math.nextUp(box.minX), y = Math.nextUp(box.minY);
+                    if (x != Math.nextDown(box.maxX) || y != Math.nextDown(box.maxY))
+                      throw new IOException("Point index requires single-coordinate XY bounds");
+                    box = new BoundingBox(x, y, x, y);
+                  }
                   e.box = box;
+                  if (leafLayout == SpatialPageCodec.POINT
+                      && (box.minX != box.maxX || box.minY != box.maxY))
+                    throw new IOException("Point index requires degenerate XY bounds");
                   e.location =
                       new Location(
                               loc.chunkOffset,
@@ -119,7 +135,7 @@ public final class SpatialIndex {
           out.seek(out.length());
           long root;
           try (CloseableIterator<ExternalSort.Entry> sorted = entries.finish()) {
-            root = build(out, sorted, temp, options);
+            root = build(out, sorted, temp, options, leafLayout);
           }
           Manifest manifest = manifest(c);
           Info info = new Info();
@@ -130,6 +146,7 @@ public final class SpatialIndex {
           info.rootLength = FrameRef.at(out, root).length;
           info.count = count;
           info.packing = options.packing;
+          info.leafLayout = leafLayout;
           manifest.indexes.put(key(cls, attr), info);
           long manifestOffset = Frames.write(out, Frames.SPATIAL_MANIFEST, Cbor.bytes(manifest));
           Frames.footer(out, c.indexRoot(), manifestOffset);
@@ -153,16 +170,26 @@ public final class SpatialIndex {
     return String.format(Locale.ROOT, "%016x", bits);
   }
 
-  private static Entry writeNode(RandomAccessFile out, Node node, boolean leaf) throws IOException {
+  private static Entry writeNode(RandomAccessFile out, Node node, int layout) throws IOException {
     long offset =
-        Frames.write(out, leaf ? Frames.SPATIAL_LEAF : Frames.SPATIAL_BRANCH, Cbor.bytes(node));
+        Frames.write(
+            out,
+            layout == SpatialPageCodec.BRANCH ? Frames.SPATIAL_BRANCH : Frames.SPATIAL_LEAF,
+            SpatialPageCodec.encode(node, layout));
     Entry ref = new Entry();
     ref.child = offset;
     ref.childLength = FrameRef.at(out, offset).length;
     for (Entry e : node.entries) {
-      if (ref.box == null)
-        ref.box = new BoundingBox(e.box.minX, e.box.minY, e.box.maxX, e.box.maxY);
-      else ref.box.expand(e.box);
+      BoundingBox b =
+          layout == SpatialPageCodec.POINT
+              ? new BoundingBox(
+                  Math.nextDown(e.box.minX),
+                  Math.nextDown(e.box.minY),
+                  Math.nextUp(e.box.maxX),
+                  Math.nextUp(e.box.maxY))
+              : e.box;
+      if (ref.box == null) ref.box = new BoundingBox(b.minX, b.minY, b.maxX, b.maxY);
+      else ref.box.expand(b);
     }
     return ref;
   }
@@ -178,7 +205,8 @@ public final class SpatialIndex {
       RandomAccessFile out,
       CloseableIterator<ExternalSort.Entry> input,
       Path temp,
-      SpatialIndexOptions options)
+      SpatialIndexOptions options,
+      int leafLayout)
       throws IOException {
     Path current = Files.createTempFile(temp, "spatial-level-", ".run");
     try (DataOutputStream data =
@@ -188,7 +216,9 @@ public final class SpatialIndex {
     boolean leaf = true;
     while (true) {
       Path next = Files.createTempFile(temp, "spatial-level-", ".run");
-      long count = 0, encodedBytes = 0;
+      long count = 0;
+      int layout = leaf ? leafLayout : SpatialPageCodec.BRANCH;
+      int capacity = (PAGE_BYTES - SpatialPageCodec.HEADER) / SpatialPageCodec.entrySize(layout);
       try (ExternalSort x = new ExternalSort(temp, 16L * 1024 * 1024)) {
         try (DataInputStream in =
             new DataInputStream(new BufferedInputStream(Files.newInputStream(current)))) {
@@ -200,16 +230,15 @@ public final class SpatialIndex {
                     ? center(entry.box.minX, entry.box.maxX)
                     : entry.box.minX;
             x.add(sortKey(coordinate) + FilesEx.number(count++), record.value);
-            encodedBytes += record.value.length;
           }
         }
-        long pages = Math.max(1, (encodedBytes + PAGE_BYTES - 1) / PAGE_BYTES);
+        long pages = Math.max(1, (count + capacity - 1) / capacity);
         long stripes = "str".equals(options.packing) ? (long) Math.ceil(Math.sqrt(pages)) : 1;
         long stripeCount = Math.max(1, (count + stripes - 1) / stripes);
         try (CloseableIterator<ExternalSort.Entry> sorted = x.finish();
             DataOutputStream refs =
                 new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(next)))) {
-          NodeWriter writer = new NodeWriter(out, refs, leaf);
+          NodeWriter writer = new NodeWriter(out, refs, layout);
           if ("x".equals(options.packing)) {
             while (sorted.hasNext()) writer.add(Cbor.read(sorted.next().value, Entry.class));
           } else {
@@ -248,19 +277,20 @@ public final class SpatialIndex {
   private static final class NodeWriter {
     final RandomAccessFile out;
     final DataOutputStream refs;
-    final boolean leaf;
+    final int layout;
     Node node = new Node();
     long count;
 
-    NodeWriter(RandomAccessFile out, DataOutputStream refs, boolean leaf) {
+    NodeWriter(RandomAccessFile out, DataOutputStream refs, int layout) {
       this.out = out;
       this.refs = refs;
-      this.leaf = leaf;
+      this.layout = layout;
     }
 
     void add(Entry entry) throws IOException {
       node.entries.add(entry);
-      if (node.entries.size() > 1 && Cbor.bytes(node).length > PAGE_BYTES) {
+      if (SpatialPageCodec.HEADER + node.entries.size() * SpatialPageCodec.entrySize(layout)
+          > PAGE_BYTES) {
         node.entries.remove(node.entries.size() - 1);
         write();
         node.entries.add(entry);
@@ -272,7 +302,8 @@ public final class SpatialIndex {
     }
 
     void write() throws IOException {
-      ExternalSort.write(refs, new ExternalSort.Entry("", Cbor.bytes(writeNode(out, node, leaf))));
+      ExternalSort.write(
+          refs, new ExternalSort.Entry("", Cbor.bytes(writeNode(out, node, layout))));
       count++;
       node = new Node();
     }
@@ -282,6 +313,8 @@ public final class SpatialIndex {
       throws IOException {
     Info info = manifest(c).indexes.get(key(cls, attr));
     if (info == null) throw new IOException("No spatial index for " + cls + "." + attr);
+    if (info.leafLayout != SpatialPageCodec.RECTANGLE && info.leafLayout != SpatialPageCodec.POINT)
+      throw new IOException("Unsupported spatial leaf layout " + info.leafLayout);
     return new Fragment(
         c,
         () -> candidates(c, info, box),
@@ -306,7 +339,7 @@ public final class SpatialIndex {
     Path temp = Files.createTempDirectory("ibx-candidates-");
     ExternalSort sorted = new ExternalSort(temp, 4L * 1024 * 1024);
     try {
-      visit(c, new FrameRef(info.root, info.rootLength), box, sorted, 0);
+      visit(c, new FrameRef(info.root, info.rootLength), box, sorted, 0, info.leafLayout);
       final CloseableIterator<ExternalSort.Entry> it = sorted.finish();
       return new CloseableIterator<Location>() {
         public boolean hasNext() {
@@ -338,7 +371,12 @@ public final class SpatialIndex {
   }
 
   private static void visit(
-      IbxContainer c, FrameRef reference, BoundingBox box, ExternalSort sorted, int depth)
+      IbxContainer c,
+      FrameRef reference,
+      BoundingBox box,
+      ExternalSort sorted,
+      int depth,
+      int leafLayout)
       throws IOException {
     if (depth > 64) throw new IOException("Spatial tree excessive depth");
     reference.validate(c.size() - Frames.FOOTER_SIZE);
@@ -346,7 +384,12 @@ public final class SpatialIndex {
     Frames.Frame f = c.frameStore().read(reference);
     if (f.type != Frames.SPATIAL_LEAF && f.type != Frames.SPATIAL_BRANCH)
       throw new IOException("Invalid spatial node");
-    Node n = Cbor.read(f.data, Node.class);
+    Node n =
+        SpatialPageCodec.decode(
+            f.data,
+            f.type == Frames.SPATIAL_BRANCH ? SpatialPageCodec.BRANCH : leafLayout,
+            offset,
+            c.size() - Frames.FOOTER_SIZE);
     for (Entry e : n.entries) {
       if (e.box == null) throw new IOException("Missing spatial bounds");
       try {
@@ -367,7 +410,7 @@ public final class SpatialIndex {
       } else {
         if (e.child < Frames.HEADER_SIZE || e.child >= offset)
           throw new IOException("Invalid/cyclic spatial pointer");
-        visit(c, new FrameRef(e.child, e.childLength), box, sorted, depth + 1);
+        visit(c, new FrameRef(e.child, e.childLength), box, sorted, depth + 1, leafLayout);
       }
     }
   }

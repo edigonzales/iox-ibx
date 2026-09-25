@@ -1,6 +1,6 @@
 # iox-ibx
 
-Java IOX reader/writer library for INTERLIS Binary eXchange (IBX), container format 4.
+Java IOX reader/writer library for INTERLIS Binary eXchange (IBX), container format 5.
 Supports INTERLIS 2.3 and 2.4 FULL transfers, bounded-memory external sorting,
 lossless IOM objects, optional ISO-WKB geometry, navigation and spatial indexes.
 INITIAL/UPDATE transfers are rejected. Java 21 is the supported build and runtime.
@@ -33,7 +33,7 @@ remain in [ilicontainer](https://github.com/edigonzales/ilicontainer).
 ./gradlew publish
 ```
 
-Maven coordinates: `ch.interlis:iox-ibx:0.1.0-SNAPSHOT`.
+Maven coordinates: `ch.interlis:iox-ibx:0.2.0-SNAPSHOT`.
 Repository: `https://jars.interlis.guru/snapshots`.
 Publication includes JAR, sources JAR and POM. Configure `mavenRepoUser` and
 `mavenRepoPassword` as Gradle properties, or `MAVEN_REPO_USER` and
